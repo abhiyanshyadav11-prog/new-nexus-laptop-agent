@@ -1,4 +1,14 @@
-
+from services.app_launcher import open_application
+from services.website_launcher import open_website
+from services.app_launcher import open_application
+from services.website_launcher import open_website
+from services.app_registry import APPS_PROCESSES
+from services.app_closer import close_application
+from services.system_control import lock_pc
+from services.file_search import find_file
+from services.file_opener import open_file
+from services.audio_control import set_volume
+from services.command_parser import parse_command
 import os
 import platform
 import subprocess
@@ -8,6 +18,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any
 import logging
 import psutil
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] %(message)s")
@@ -30,14 +41,91 @@ async def execute_command(cmd: Command):
     response = {"status": "success", "message": "Command executed"}
 
     try:
+
         if cmd.command == "open_app":
             app_name = cmd.args.get("app_name")
+
             if app_name:
-                open_application(app_name)
-                response["message"] = f"Opened {app_name}"
-            else:
-                response["status"] = "error"
-                response["message"] = "App name not provided"
+               return open_application(app_name)
+
+            return {
+                  "status": "error",
+                  "message": "App name not provided"
+        }
+
+        elif cmd.command == "ai_command":
+
+           text = cmd.args.get("text")
+
+           parsed = parse_command(text)
+
+           if not parsed:
+              return {
+                "status": "error",
+                "message": "Could not understand command"
+            }
+
+           return await execute_command(
+             Command(
+                command=parsed["command"],
+                args=parsed["args"]
+             )
+            )
+        
+        elif cmd.command == "close_app":
+
+           app_name = cmd.args.get("app_name")
+
+           if app_name:
+             process = APPS_PROCESSES.get(app_name.lower())
+              
+             print("APP =", app_name)
+             print("PROCESS =", process)
+
+             if process:
+                return close_application(process)
+
+             return {
+               "status": "error",
+               "message": "App not found"
+        }
+           
+        elif cmd.command == "system_control":
+
+            action = cmd.args.get("action")
+
+            if action == "lock":
+               return lock_pc()
+
+            return {
+               "status": "error",
+               "message": "Invalid system action"
+        }
+
+        elif cmd.command == "find_file":
+
+            query = cmd.args.get("query")
+
+            if query:
+              return find_file(query)
+
+            return {
+               "status": "error",
+               "message": "Query not provided"
+        }
+
+        elif cmd.command == "open_file":
+
+            path = cmd.args.get("path")
+
+            if path:
+              return open_file(path)
+
+            return {
+               "status": "error",
+                "message": "Path not provided"
+        }
+    
         elif cmd.command == "media_control":
             action = cmd.args.get("action")
             query = cmd.args.get("query")
@@ -47,17 +135,33 @@ async def execute_command(cmd: Command):
             else:
                 response["status"] = "error"
                 response["message"] = "Media action not provided"
-        elif cmd.command == "system_control":
-            action = cmd.args.get("action")
-            if action == "volume_up":
-                set_volume(up=True)
-                response["message"] = "Volume increased"
-            elif action == "volume_down":
-                set_volume(down=True)
-                response["message"] = "Volume decreased"
-            else:
-                response["status"] = "error"
-                response["message"] = "System action not supported"
+
+        elif cmd.command == "open_website":
+            site = cmd.args.get("site") or cmd.args.get("app_name")
+
+            if site:
+              return open_website(site)
+
+            return {
+               "status": "error",
+               "message": "Website not provided"
+        }
+
+        elif cmd.command == "audio_control":
+           print(cmd.args)
+           level = cmd.args.get("level")
+
+           if level is not None:
+
+              result = set_volume(level)
+
+           return {
+               "status": "error",
+               "message": "Level not provided"
+        }
+          
+        
+
         else:
             response["status"] = "error"
             response["message"] = "Unknown command"
@@ -83,18 +187,6 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket error: {e}")
 
 
-def open_application(app_name: str):
-    system = platform.system()
-    if system == "Windows":
-        # This is a placeholder. Real implementation would use pywinauto or similar.
-        subprocess.Popen(["start", app_name], shell=True)
-    elif system == "Darwin": # macOS
-        subprocess.Popen(["open", "-a", app_name])
-    elif system == "Linux":
-        subprocess.Popen([app_name.lower()]) # Assumes app_name is the command to run
-    else:
-        raise NotImplementedError(f"Application opening not supported on {system}")
-    logger.info(f"Attempted to open application: {app_name}")
 
 def media_control(action: str, query: Optional[str] = None):
     system = platform.system()
@@ -110,9 +202,7 @@ def media_control(action: str, query: Optional[str] = None):
             logger.warning("Windows media previous not implemented directly.")
     elif system == "Darwin": # macOS
         if action == "play" and query:
-            # Example: open Spotify and play a song (requires Spotify URI)
-            subprocess.run(["osascript", "-e", f'tell application \"Spotify\" to play track \"spotify:search:{query}\"
-                                                  activate application \"Spotify\"'])
+            logger.info(f"Spotify search requested: {query}")
         elif action == "play":
             subprocess.run(["osascript", "-e", "tell application \"Spotify\" to play"]) # Play/Pause toggle
         elif action == "pause":
@@ -135,24 +225,6 @@ def media_control(action: str, query: Optional[str] = None):
         raise NotImplementedError(f"Media control not supported on {system}")
     logger.info(f"Attempted media control: {action}")
 
-def set_volume(up: bool = False, down: bool = False):
-    system = platform.system()
-    if system == "Windows":
-        # Placeholder: Windows volume control requires pycaw or similar
-        logger.warning("Windows volume control not implemented directly. Consider using pycaw.")
-    elif system == "Darwin": # macOS
-        if up:
-            subprocess.run(["osascript", "-e", "set volume output volume (output volume of (get volume settings) + 10)"])
-        elif down:
-            subprocess.run(["osascript", "-e", "set volume output volume (output volume of (get volume settings) - 10)"])
-    elif system == "Linux":
-        if up:
-            subprocess.run(["amixer", "-D", "pulse", "sset", "Master", "5%+"])
-        elif down:
-            subprocess.run(["amixer", "-D", "pulse", "sset", "Master", "5%-"])
-    else:
-        raise NotImplementedError(f"Volume control not supported on {system}")
-    logger.info(f"Attempted volume control: up={up}, down={down}")
 
 
 if __name__ == "__main__":

@@ -72,6 +72,7 @@ async def execute_command(cmd: Command):
              )
             )
         
+       
         elif cmd.command == "close_app":
 
            app_name = cmd.args.get("app_name")

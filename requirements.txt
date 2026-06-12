@@ -1,0 +1,11 @@
+
+fastapi
+uvicorn
+python-dotenv
+requests
+websocket-client
+psutil # For system control (e.g., volume)
+# For app control, platform-specific libraries might be needed:
+# For Windows: pywinauto, comtypes
+# For macOS: appscript, applescript
+# For Linux: xdotool, wmctrl (requires installation)

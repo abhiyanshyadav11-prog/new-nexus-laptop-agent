@@ -18,6 +18,13 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any
 import logging
 import psutil
+from dotenv import load_dotenv
+import os
+from fastapi import FastAPI, Header, HTTPException
+
+load_dotenv()
+
+API_TOKEN = os.getenv("API_TOKEN")
 
 
 # Configure logging
@@ -36,8 +43,17 @@ async def get_status():
     return {"status": "running", "platform": platform.system(), "version": "1.0.0"}
 
 @app.post("/command")
-async def execute_command(cmd: Command):
+async def execute_command(cmd: Command,  authorization: str = Header(None)):
     logger.info(f"Received command: {cmd.command} with args: {cmd.args}")
+    print("TOKEN =", API_TOKEN)
+    print("HEADER =", authorization)
+
+    if authorization != f"Bearer {API_TOKEN}":
+      raise HTTPException(
+               status_code=401,
+               detail="Unauthorized"
+            )
+    
     response = {"status": "success", "message": "Command executed"}
 
     try:
@@ -69,7 +85,8 @@ async def execute_command(cmd: Command):
              Command(
                 command=parsed["command"],
                 args=parsed["args"]
-             )
+             ),
+             authorization=authorization
             )
         
        
